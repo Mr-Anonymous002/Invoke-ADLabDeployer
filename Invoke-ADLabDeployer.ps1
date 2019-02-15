@@ -1,4 +1,3 @@
-
 <#
     Invoke-ADLabDeployer - Automated Windows and AD testlab deployments for red and blue teams
     Author: Marc Smeets / Outflank B.V.
@@ -278,7 +277,7 @@ function Invoke-ADLabDeployer {
         Invoke-ADLabDeployVM -Machine $VM -LabName $Name 
     }
     Write-Verbose "[+] Done setting up the VM(s) and now starting them up. Giving them 180 to boot."
-    Start-Sleep -Seconds 60
+    Start-Sleep -Seconds 180
 
     # Start deployment of AD Services - call function per domain/forest
     if ($HTadds) {
