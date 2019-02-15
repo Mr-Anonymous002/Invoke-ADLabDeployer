@@ -5,7 +5,9 @@
     Version: 0.8
     Date: 30 March 2018
     Link: https://github.com/OutflankNL/Invoke-ADLabDeployer / https://outflank.nl/blog/2018/03/30/automated-ad-and-windows-test-lab-deployments-with-invoke-adlabdeployer
-
+    Note:
+    16 February 2019, mrpond.
+    this is working version(tested on Windows server 2016)
 #>
 
 
@@ -276,8 +278,7 @@ function Invoke-ADLabDeployer {
     foreach ($VM in $HTSystems.Values) { 
         Invoke-ADLabDeployVM -Machine $VM -LabName $Name 
     }
-    Write-Verbose "[+] Done setting up the VM(s) and now starting them up. Giving them 180 to boot."
-    Start-Sleep -Seconds 180
+    Write-Verbose "[+] Done setting up the VM(s) and now starting them up."
 
     # Start deployment of AD Services - call function per domain/forest
     if ($HTadds) {
@@ -322,17 +323,20 @@ function Invoke-ADLabDeployer {
         Write-Verbose "[*] Joining systems to AD Domains"
         foreach ($VM in $HTSystems.Values) {
             if ($VM.containskey("Domain")) {
-                Invoke-ADLabJoinDOmain -Machine $VM -DomainAdminUsername "administrator" -DomainAdminPassword $($HTAdds.item($($VM.item("Domain"))).item("SafeModeAdminPass")) -DCname $($HTAdds.item($($VM.item("Domain"))).item("PDC"))
+                Invoke-ADLabJoinDOmain -Machine $VM -DomainAdminUsername "administrator" -DomainAdminPassword $($HTAdds.item($($VM.item("Domain"))).item("SafeModeAdminPass")) -DCname $($HTAdds.item($($VM.item("Domain"))).item("PDC")) -DomainName $Domain.ADDSName
             }
         }
     }
 
     # Start installation of software packages - call function per system
+	Write-Verbose "[*] Let's them reboot, Wait 30 Seconds before moving on. "
+    Start-Sleep -Seconds 30
     Write-Verbose "[*] Starting installation of software packages."
     foreach ($VM in $HTSystems.Values) {
         Invoke-ADLabSystemInstallSoftware -Machine $VM        
     }
-
+	Write-Verbose "[*] Let's them reboot, Wait 30 Seconds before moving on. "
+    Start-Sleep -Seconds 30
     # Start local configuration of system - call function per system
     Write-Verbose "[*] Starting local configuration."
     foreach ($VM in $HTSystems.Values) {
@@ -658,12 +662,15 @@ function Get-ADLabSystemUpStatus {
      
     $Pass = ConvertTo-SecureString $Password -AsPlainText -Force
     $Creds = New-Object -TypeName System.Management.Automation.PSCredential $Username,$Pass
-       
-    $StopTime = (get-date).AddSeconds($TimeOut)
-    while ((get-date) -lt ($StopTime)) {
+	
+	$StartTime = Get-Date
+    $StopTime = $StartTime.AddSeconds($TimeOut)
+		
+    while ($StartTime -lt ($StopTime)) {
         # first do a ping, if successful try a login
-        if (Test-Connection -Computername $IP -Count 1 -Quiet|Out-Null) { 
-            Invoke-Command -ComputerName $IP -Credential $Creds -ScriptBlock { hostname }|out-null
+		Test-Connection -Computername $IP -Count 1 -Quiet -ErrorAction SilentlyContinue|Out-Null
+        if ($?) { 
+            Invoke-Command -ComputerName $IP -Credential $Creds -ScriptBlock { hostname } -ErrorAction SilentlyContinue|out-null
             if ($?) { 
                 return $True
             }
@@ -763,18 +770,19 @@ function Invoke-ADLabDeployADDS {
         $InstallOK = $False
         Write-Verbose "[*] PDC is rebooting for Forest and Domain to be effective. This can take a while depending on your hardware."
         Write-verbose "[*] We will wait up till 5 minutes, but check periodically."
-        Start-Sleep -Seconds 60 
-        while ((-not($InstallOK)) -and ($TimeEnd -ge $TimeStart) ) {
-            if (Get-ADLabSystemUpStatus -ip $domain.item("PDC_IP") -username $domain.item("PDC_LocalUser") -password $domain.item("PDC_LocalPass") -timeout 15 ) {
+        #Start-Sleep -Seconds 60 
+        while ($TimeEnd -ge $TimeStart) {
+            if (Get-ADLabSystemUpStatus -ip $domain.item("PDC_IP") -username $domain.item("PDC_LocalUser") -password $domain.item("PDC_LocalPass") -timeout 1 ) {
                 Write-Verbose "[+] PDC is back up. Now checking if ADDS is up and running."
                 $Res = Invoke-Command -computername $domain.item("PDC_IP") -Credential $creds -ScriptBlock { (Get-CimInstance win32_computersystem).Domain }
                 if ( $Res  = $DomainName )  { # install went ok
-                   Start-Sleep -Seconds 30 # letting the PDC advertise itself on the network
+                   #Start-Sleep -Seconds 30 # letting the PDC advertise itself on the network
                    Write-Verbose "[+] Forest and Domain $Domainname successfully installed."
                    $InstallOK = $True
+				   break
                 }
             }
-            Start-Sleep -Seconds 30
+            #Start-Sleep -Seconds 30
         }
         if ($InstallOK = $false) { Write-Warning "[!] WARNING: ADDS installer ran, but couldn't evaluate the results of domain $DomainName."}    
     } else {Write-Error "[!] Error installing the Forest. More things will probably fail now."}
@@ -805,7 +813,10 @@ Function Invoke-ADLabJoinDomain {
 
     .PARAMETER $DCName
         String with the IP/hostname of the domain controller - mandatory
-
+		
+    .PARAMETER $DomainName
+        String with the IP/hostname of the domain controller - mandatory
+		
 #>
 
     [CmdletBinding()]
@@ -825,13 +836,17 @@ Function Invoke-ADLabJoinDomain {
     
     [Parameter(Mandatory = $True)]
     [string]
-    $DCname        
+    $DCname,
+	
+	[Parameter(Mandatory = $True)]
+    [string]
+    $DomainName       
     )
 
     $Pass = ConvertTo-SecureString $Machine.item("Pass") -AsPlainText -Force
     $Creds = New-Object -TypeName System.Management.Automation.PSCredential $(".\"+$Machine.item("User")),$pass
     $DomainPass = ConvertTo-SecureString $DomainAdminPassword -AsPlainText -Force
-    $DomainCreds = New-Object  -TypeName System.Management.Automation.PSCredential $($Machine.item("Domain")+"\"+$DomainAdminUsername),$DomainPass
+    $DomainCreds = New-Object -TypeName System.Management.Automation.PSCredential $($Machine.item("Domain")+"\"+$DomainAdminUsername), $DomainPass
 
 
     # Enable WinRM Service to start not delayed in the future
@@ -845,9 +860,24 @@ Function Invoke-ADLabJoinDomain {
         write-Verbose "[*] System $($Machine.item("Hostname")) : already in that domain. Nothing to do."
     } else { # command didnt go well or not in domain
         # Actually join the domain and reboot.
-        Write-Verbose "[*] System $($Machine.item("Hostname")) : not joined, about to do so."
-        Add-Computer -ComputerName $($Machine.item("Net1_IP").split('/')[0]) -LocalCredential $Creds -DomainName $Machine.item("Domain") -Credential $DomainCreds -Restart -Force # -server $($DCname+"."+$Machine.item("Domain"))
-        if (-not ($?)) { Write-Warning "[!] System $($Machine.item("Hostname")) WARNING: could not join domain $($Machine.item("Domain"))" } 
+
+		Write-Verbose "[*] System $($Machine.item("Hostname")) : not joined, about to do so."
+		
+		$TimeStart = Get-Date
+        $TimeEnd = $timeStart.addminutes(5)
+        $ADJoined = $False
+        while ($TimeEnd -ge $TimeStart) {
+			# try a join domain
+			Add-Computer -ComputerName $($Machine.item("Net1_IP").split('/')[0]) -LocalCredential $Creds -DomainName $($DomainName.split('.')[0]) -Credential $DomainCreds -Restart -Force -ErrorAction SilentlyContinue
+			# -server $($DCname+"."+$Machine.item("Domain"))
+			if ($?) {
+				$ADJoined = $True
+				break
+			} 
+		}
+        if (-not ($ADJoined)) {
+			Write-Warning "[!] System $($Machine.item("Hostname")) WARNING: could not join domain $($Machine.item("Domain"))"
+		} 
         else { # let the VM reboot for 60sec atfter joing the domain 
             Write-Verbose "[+] System $($Machine.item("Hostname")) : Successfully joined the domain. Now rebooting."
         } 
