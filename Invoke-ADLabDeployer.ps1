@@ -323,7 +323,7 @@ function Invoke-ADLabDeployer {
         Write-Verbose "[*] Joining systems to AD Domains"
         foreach ($VM in $HTSystems.Values) {
             if ($VM.containskey("Domain")) {
-                Invoke-ADLabJoinDOmain -Machine $VM -DomainAdminUsername "administrator" -DomainAdminPassword $($HTAdds.item($($VM.item("Domain"))).item("SafeModeAdminPass")) -DCname $($HTAdds.item($($VM.item("Domain"))).item("PDC")) -DomainName $Domain.ADDSName
+                Invoke-ADLabJoinDOmain -Machine $VM -DomainAdminUsername "administrator" -DomainAdminPassword $($HTAdds.item($($VM.item("Domain"))).item("SafeModeAdminPass")) -DCname $($HTAdds.item($($VM.item("Domain"))).item("PDC"))
             }
         }
     }
@@ -813,10 +813,7 @@ Function Invoke-ADLabJoinDomain {
 
     .PARAMETER $DCName
         String with the IP/hostname of the domain controller - mandatory
-		
-    .PARAMETER $DomainName
-        String with the IP/hostname of the domain controller - mandatory
-		
+
 #>
 
     [CmdletBinding()]
@@ -836,11 +833,7 @@ Function Invoke-ADLabJoinDomain {
     
     [Parameter(Mandatory = $True)]
     [string]
-    $DCname,
-	
-	[Parameter(Mandatory = $True)]
-    [string]
-    $DomainName       
+    $DCname
     )
 
     $Pass = ConvertTo-SecureString $Machine.item("Pass") -AsPlainText -Force
