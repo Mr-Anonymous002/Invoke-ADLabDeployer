@@ -1,4 +1,4 @@
-﻿
+
 <#
     Invoke-ADLabDeployer - Automated Windows and AD testlab deployments for red and blue teams
     Author: Marc Smeets / Outflank B.V.
@@ -277,8 +277,8 @@ function Invoke-ADLabDeployer {
     foreach ($VM in $HTSystems.Values) { 
         Invoke-ADLabDeployVM -Machine $VM -LabName $Name 
     }
-    Write-Verbose "[+] Done setting up the VM(s) and now starting them up. Giving them 180s to boot."
-    Start-Sleep -Seconds 180
+    Write-Verbose "[+] Done setting up the VM(s) and now starting them up. Giving them 180 to boot."
+    Start-Sleep -Seconds 60
 
     # Start deployment of AD Services - call function per domain/forest
     if ($HTadds) {
@@ -419,8 +419,10 @@ Function Invoke-ADLabDeployNetwork {
         Write-Error "[X] To install run:"
         Write-Error "[X]   1. Install-WindowsFeature Routing -IncludeManagementTools"
         Write-Error "[X]   2. Set-Service remoteaccess -StartupType automatic"
-        Write-Error "[X]   3. Set-Service rasman -StartupType automatic"        Write-Error "[X]   4. Restart-Computer"
-        Write-Error "[X] Can't continue, exiting now."        Break
+        Write-Error "[X]   3. Set-Service rasman -StartupType automatic"
+        Write-Error "[X]   4. Restart-Computer"
+        Write-Error "[X] Can't continue, exiting now."
+        Break
     }
 
     # check if Routing is enabled. If not do so.
@@ -594,9 +596,11 @@ function Invoke-ADLabDeployVM {
     Start-VM $machine.item("VMName")
 
     # Adding system to local Trusted Host list for WSMan if TrustedHost is not already set to wildcard *
-    $trustedHostList = Get-Item WSMan:\localhost\Client\TrustedHosts
-    if ( -not($trustedHostList.value -Like "*")) {
-        Set-Item WSMan:\localhost\Client\TrustedHosts -Value $machine.item("Net1_IP") -Concatenate -Force
+    $trustedHostList = (Get-Item WSMan:\localhost\Client\TrustedHosts).Value
+
+    if ( -not($trustedHostList -Contains "*") ) {
+		Write-Verbose "[+] Add $(($machine.item("Net1_IP")).split('/')[0]) to TrustedHosts list."
+        Set-Item WSMan:\localhost\Client\TrustedHosts -Value $(($machine.item("Net1_IP")).split('/')[0]) -Concatenate -Force
     }
 
 } # end of function Invoke-ADLabDeployVMs
