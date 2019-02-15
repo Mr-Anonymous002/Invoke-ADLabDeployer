@@ -988,14 +988,14 @@ Function Invoke-ADLabSystemInstallSoftware {
             param($OfficeSetup,$OfficeSetupArg,$InstallOK=$False)
             Start-Process -FilePath $OfficeSetup -ArgumentList $OfficeSetupArg -Verb runas -wait
             if ((Get-WmiObject -Class win32_operatingsystem).osarchitecture -match "32-bit") {
-                $res = get-itemproperty hklm:\software\microsoft\windows\currentversion\uninstall\* | select DisplayName|where { $_.DisplayName -match “Office”}
+                $res = get-itemproperty hklm:\software\microsoft\windows\currentversion\uninstall\* | select DisplayName|where { $_.DisplayName -match "Office"}
                 if ($res.count -ne 1) { 
                     $InstallOK = $True
                     #Get-ChildItem "C:\SoftwareInstallers\Office*" -Recurse | Remove-Item -Force
                     rm -r  -fo "C:\SoftwareInstallers\Office*"
                 }
             } else {
-                $res = get-itemproperty hklm:\software\wow6432node\microsoft\windows\currentversion\uninstall\* | select DisplayName|where { $_.DisplayName -match “Office”}
+                $res = get-itemproperty hklm:\software\wow6432node\microsoft\windows\currentversion\uninstall\* | select DisplayName|where { $_.DisplayName -match "Office"}
                 if ($res.count -ne 1) { 
                     $InstallOK = $True
                     #Get-ChildItem "C:\SoftwareInstallers\Office*" -Recurse | Remove-Item -Force
