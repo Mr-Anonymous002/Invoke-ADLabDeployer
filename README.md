@@ -1,3 +1,11 @@
+# Note February 17, 2019 #
+Mr. Pond : I can't get the original working (try on sever 2016),
+if I'm correct script contain some bug... 
+this fork is a fix and just make it working.
+
+I'll do some code improve base on original idea.
+
+
 # Goal of the project #
 Automated deployment of Windows and Active Directory test lab networks. Useful for red and blue teams.
 
