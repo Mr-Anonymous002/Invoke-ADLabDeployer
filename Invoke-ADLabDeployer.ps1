@@ -6,7 +6,7 @@
     Date: 30 March 2018
     Link: https://github.com/OutflankNL/Invoke-ADLabDeployer / https://outflank.nl/blog/2018/03/30/automated-ad-and-windows-test-lab-deployments-with-invoke-adlabdeployer
     Note:
-    16 February 2019, mrpond.
+    18 February 2019, mrpond.
     this is working version(tested on Windows server 2016)
 #>
 
@@ -323,7 +323,7 @@ function Invoke-ADLabDeployer {
         Write-Verbose "[*] Joining systems to AD Domains"
         foreach ($VM in $HTSystems.Values) {
             if ($VM.containskey("Domain")) {
-                Invoke-ADLabJoinDOmain -Machine $VM -DomainAdminUsername "administrator" -DomainAdminPassword $($HTAdds.item($($VM.item("Domain"))).item("SafeModeAdminPass")) -DCname $($HTAdds.item($($VM.item("Domain"))).item("PDC"))
+                Invoke-ADLabJoinDOmain -Machine $VM -DomainAdminUsername "administrator" -DomainAdminPassword $($HTAdds.item($($VM.item("Domain"))).item("SafeModeAdminPass")) -DCname $($HTAdds.item($($VM.item("Domain"))).item("PDC")) -DomainName $Domain.ADDSName
             }
         }
     }
@@ -661,26 +661,22 @@ function Get-ADLabSystemUpStatus {
     )
      
     $Pass = ConvertTo-SecureString $Password -AsPlainText -Force
-    $Creds = New-Object -TypeName System.Management.Automation.PSCredential $Username,$Pass
+    $Creds = New-Object -TypeName System.Management.Automation.PSCredential $Username, $Pass
+
+	$Arguments = @{
+	Query = "select * from win32_service where name='WinRM'"
+	ComputerName = $IP
+	Credential = $Creds
+	}
 	
-	$StartTime = Get-Date
-    $StopTime = $StartTime.AddSeconds($TimeOut)
-		
-    while ($StartTime -lt ($StopTime)) {
-        # first do a ping, if successful try a login
-		Test-Connection -Computername $IP -Count 1 -Quiet -ErrorAction SilentlyContinue|Out-Null
-        if ($?) { 
-            Invoke-Command -ComputerName $IP -Credential $Creds -ScriptBlock { hostname } -ErrorAction SilentlyContinue|out-null
-            if ($?) { 
-                return $True
-            }
-        } 
-    }
-    # Just in case ping is disabled on the remote host, just one final try with invoke-command
-    Invoke-Command -ComputerName $IP -Credential $Creds -ScriptBlock { hostname }|out-null
-    if ($?) { 
-        return $True
-    }
+	$StopTime = (Get-Date).AddSeconds($TimeOut)
+	while ($StopTime -ge (Get-Date)) {
+		if ((Get-WmiObject @Arguments -ErrorAction SilentlyContinue).State -Match "Running") {
+			return $True
+		}
+		Start-Sleep -Seconds 1
+	}
+	Write-Verbose "[*] Get-ADLabSystemUpStatus Timeout($TimeOut) exceed for $IP"
     return $False
  } # end of function Get-ADLabSystemUpStatus
 
@@ -765,13 +761,12 @@ function Invoke-ADLabDeployADDS {
     # Check if the previous installation went ok.
     if($?) {
         # the computer just rebooted to finish the ADDS installation, giving it some time to come back before trying for 1st time.
-        $TimeStart = Get-Date
-        $TimeEnd = $timeStart.addminutes(5)
+		$EndTime = (Get-Date).Addminutes(5)
         $InstallOK = $False
         Write-Verbose "[*] PDC is rebooting for Forest and Domain to be effective. This can take a while depending on your hardware."
         Write-verbose "[*] We will wait up till 5 minutes, but check periodically."
         #Start-Sleep -Seconds 60 
-        while ($TimeEnd -ge $TimeStart) {
+        while ($EndTime -ge (Get-Date)) {
             if (Get-ADLabSystemUpStatus -ip $domain.item("PDC_IP") -username $domain.item("PDC_LocalUser") -password $domain.item("PDC_LocalPass") -timeout 1 ) {
                 Write-Verbose "[+] PDC is back up. Now checking if ADDS is up and running."
                 $Res = Invoke-Command -computername $domain.item("PDC_IP") -Credential $creds -ScriptBlock { (Get-CimInstance win32_computersystem).Domain }
@@ -787,7 +782,7 @@ function Invoke-ADLabDeployADDS {
         if ($InstallOK = $false) { Write-Warning "[!] WARNING: ADDS installer ran, but couldn't evaluate the results of domain $DomainName."}    
     } else {Write-Error "[!] Error installing the Forest. More things will probably fail now."}
 
-    #### Todo Add-DnsServerPrimaryZone -DynamicUpdate Secure -NetworkId ‘10.1.1.0/24’ -ReplicationScope Domain
+    #### Todo Add-DnsServerPrimaryZone -DynamicUpdate Secure -NetworkId â€˜10.1.1.0/24â€™ -ReplicationScope Domain
 
 } # end of function Invoke-ADLabInvokeADDS
 
@@ -813,7 +808,10 @@ Function Invoke-ADLabJoinDomain {
 
     .PARAMETER $DCName
         String with the IP/hostname of the domain controller - mandatory
-
+		
+    .PARAMETER $DomainName
+        String with the IP/hostname of the domain controller - mandatory
+		
 #>
 
     [CmdletBinding()]
@@ -833,7 +831,11 @@ Function Invoke-ADLabJoinDomain {
     
     [Parameter(Mandatory = $True)]
     [string]
-    $DCname
+    $DCname,
+	
+	[Parameter(Mandatory = $True)]
+    [string]
+    $DomainName       
     )
 
     $Pass = ConvertTo-SecureString $Machine.item("Pass") -AsPlainText -Force
@@ -856,12 +858,12 @@ Function Invoke-ADLabJoinDomain {
 
 		Write-Verbose "[*] System $($Machine.item("Hostname")) : not joined, about to do so."
 		
-		$TimeStart = Get-Date
-        $TimeEnd = $timeStart.addminutes(5)
+		$EndTime = (Get-Date).Addminutes(5)
         $ADJoined = $False
-        while ($TimeEnd -ge $TimeStart) {
+        while ($EndTime -ge (Get-Date)) {
 			# try a join domain
-			Add-Computer -ComputerName $($Machine.item("Net1_IP").split('/')[0]) -LocalCredential $Creds -DomainName $($DomainName.split('.')[0]) -Credential $DomainCreds -Restart -Force -ErrorAction SilentlyContinue
+			Add-Computer -ComputerName $($Machine.item("Net1_IP").split('/')[0]) -LocalCredential $Creds -DomainName $($Machine.item("Domain").split('.')[0]) -Credential $DomainCreds -Restart -Force
+			# -ErrorAction SilentlyContinue
 			# -server $($DCname+"."+$Machine.item("Domain"))
 			if ($?) {
 				$ADJoined = $True
