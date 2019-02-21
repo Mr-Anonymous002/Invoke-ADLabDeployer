@@ -6,7 +6,7 @@
     Date: 30 March 2018
     Link: https://github.com/OutflankNL/Invoke-ADLabDeployer / https://outflank.nl/blog/2018/03/30/automated-ad-and-windows-test-lab-deployments-with-invoke-adlabdeployer
     Note:
-    18 February 2019, mrpond.
+    16 February 2019, mrpond.
     this is working version(tested on Windows server 2016)
 #>
 
@@ -323,7 +323,7 @@ function Invoke-ADLabDeployer {
         Write-Verbose "[*] Joining systems to AD Domains"
         foreach ($VM in $HTSystems.Values) {
             if ($VM.containskey("Domain")) {
-                Invoke-ADLabJoinDOmain -Machine $VM -DomainAdminUsername "administrator" -DomainAdminPassword $($HTAdds.item($($VM.item("Domain"))).item("SafeModeAdminPass")) -DCname $($HTAdds.item($($VM.item("Domain"))).item("PDC")) -DomainName $Domain.ADDSName
+				Invoke-ADLabJoinDOmain -Machine $VM -DomainAdminUsername "administrator" -DomainAdminPassword $($HTAdds.item($($VM.item("Domain"))).item("SafeModeAdminPass")) -DCname $($HTAdds.item($($VM.item("Domain"))).item("PDC"))
             }
         }
     }
@@ -760,29 +760,24 @@ function Invoke-ADLabDeployADDS {
   
     # Check if the previous installation went ok.
     if($?) {
-        # the computer just rebooted to finish the ADDS installation, giving it some time to come back before trying for 1st time.
-		$EndTime = (Get-Date).Addminutes(5)
-        $InstallOK = $False
+        # the computer just rebooted to finish the ADDS installation,
+		
         Write-Verbose "[*] PDC is rebooting for Forest and Domain to be effective. This can take a while depending on your hardware."
         Write-verbose "[*] We will wait up till 5 minutes, but check periodically."
-        #Start-Sleep -Seconds 60 
-        while ($EndTime -ge (Get-Date)) {
-            if (Get-ADLabSystemUpStatus -ip $domain.item("PDC_IP") -username $domain.item("PDC_LocalUser") -password $domain.item("PDC_LocalPass") -timeout 1 ) {
-                Write-Verbose "[+] PDC is back up. Now checking if ADDS is up and running."
-                $Res = Invoke-Command -computername $domain.item("PDC_IP") -Credential $creds -ScriptBlock { (Get-CimInstance win32_computersystem).Domain }
-                if ( $Res  = $DomainName )  { # install went ok
-                   #Start-Sleep -Seconds 30 # letting the PDC advertise itself on the network
-                   Write-Verbose "[+] Forest and Domain $Domainname successfully installed."
-                   $InstallOK = $True
-				   break
-                }
-            }
-            #Start-Sleep -Seconds 30
-        }
+
+		if (Get-ADLabSystemUpStatus -ip $domain.item("PDC_IP") -username $domain.item("PDC_LocalUser") -password $domain.item("PDC_LocalPass") -timeout 300 ) {
+			Write-Verbose "[+] PDC is back up. Now checking if ADDS is up and running."
+			$Res = Invoke-Command -computername $domain.item("PDC_IP") -Credential $creds -ScriptBlock { (Get-CimInstance win32_computersystem).Domain }
+			if ( $Res  = $DomainName )  { # install went ok
+			   Write-Verbose "[+] Forest and Domain $Domainname successfully installed."
+			   $InstallOK = $True
+			}
+		}
+		
         if ($InstallOK = $false) { Write-Warning "[!] WARNING: ADDS installer ran, but couldn't evaluate the results of domain $DomainName."}    
     } else {Write-Error "[!] Error installing the Forest. More things will probably fail now."}
 
-    #### Todo Add-DnsServerPrimaryZone -DynamicUpdate Secure -NetworkId â€˜10.1.1.0/24â€™ -ReplicationScope Domain
+    #### Todo Add-DnsServerPrimaryZone -DynamicUpdate Secure -NetworkId ‘10.1.1.0/24’ -ReplicationScope Domain
 
 } # end of function Invoke-ADLabInvokeADDS
 
@@ -862,7 +857,8 @@ Function Invoke-ADLabJoinDomain {
         $ADJoined = $False
         while ($EndTime -ge (Get-Date)) {
 			# try a join domain
-			Add-Computer -ComputerName $($Machine.item("Net1_IP").split('/')[0]) -LocalCredential $Creds -DomainName $($Machine.item("Domain").split('.')[0]) -Credential $DomainCreds -Restart -Force
+			#Add-Computer -ComputerName $($Machine.item("Net1_IP").split('/')[0]) -LocalCredential $Creds -DomainName $($Machine.item("Domain").split('.')[0]) -Credential $DomainCreds -Restart -Force
+			Add-Computer -ComputerName $($Machine.item("Net1_IP").split('/')[0]) -LocalCredential $Creds -DomainName $Machine.item("Domain") -Credential $DomainCreds -Restart -Force
 			# -ErrorAction SilentlyContinue
 			# -server $($DCname+"."+$Machine.item("Domain"))
 			if ($?) {
