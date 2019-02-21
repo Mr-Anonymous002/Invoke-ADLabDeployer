@@ -803,10 +803,7 @@ Function Invoke-ADLabJoinDomain {
 
     .PARAMETER $DCName
         String with the IP/hostname of the domain controller - mandatory
-		
-    .PARAMETER $DomainName
-        String with the IP/hostname of the domain controller - mandatory
-		
+				
 #>
 
     [CmdletBinding()]
@@ -826,11 +823,8 @@ Function Invoke-ADLabJoinDomain {
     
     [Parameter(Mandatory = $True)]
     [string]
-    $DCname,
-	
-	[Parameter(Mandatory = $True)]
-    [string]
-    $DomainName       
+    $DCname
+    
     )
 
     $Pass = ConvertTo-SecureString $Machine.item("Pass") -AsPlainText -Force
